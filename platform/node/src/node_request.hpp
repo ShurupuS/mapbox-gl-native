@@ -26,8 +26,6 @@ public:
 
     static void HandleCallback(const Nan::FunctionCallbackInfo<v8::Value>& info);
 
-    static Nan::Persistent<v8::FunctionTemplate> callbackTemplate;
-
     struct NodeAsyncRequest : public mbgl::AsyncRequest {
         NodeAsyncRequest(NodeRequest*);
         ~NodeAsyncRequest() override;
@@ -35,12 +33,16 @@ public:
         NodeRequest* request;
     };
 
+    Nan::Persistent<v8::Function> callbackFn;
+
 private:
     NodeMap* target;
     mbgl::FileSource::Callback callback;
     NodeAsyncRequest* asyncRequest = nullptr;
 
     mbgl::Response response;
+
+    static Nan::Persistent<v8::FunctionTemplate> callbackTemplate;
 };
 
 }
