@@ -88,7 +88,9 @@ void NodeRequest::HandleCallback(const Nan::FunctionCallbackInfo<v8::Value>& inf
 
     mbgl::Response response;
 
-    if (info[0]->IsObject()) {
+    if (info.Length() < 1) {
+        response.noContent = true;
+    } else if (info[0]->IsObject()) {
         auto err = info[0]->ToObject();
         auto msg = Nan::New("message").ToLocalChecked();
 
@@ -98,8 +100,6 @@ void NodeRequest::HandleCallback(const Nan::FunctionCallbackInfo<v8::Value>& inf
         }
     } else if (info[0]->IsString()) {
         request->SetErrorMessage(*Nan::Utf8String(info[0]));
-    } else if (info.Length() < 1) {
-        response.noContent = true;
     } else if (info.Length() < 2 || !info[1]->IsObject()) {
         return Nan::ThrowTypeError("Second argument must be a response object");
     } else {
