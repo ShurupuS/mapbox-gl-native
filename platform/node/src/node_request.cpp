@@ -15,7 +15,7 @@ NodeRequest::NodeRequest(
     fileSourceCallback(std::make_unique<mbgl::FileSource::Callback>(fileSourceCallback_)) {
     Nan::HandleScope scope;
 
-    auto fn = Nan::New(handleCallback);
+    auto fn = Nan::New(callbackTemplate)->GetFunction();
 
     // Bind a reference to this object on the callback function
     fn->SetHiddenValue(Nan::New("worker").ToLocalChecked(), Nan::New<v8::External>(this));
@@ -188,6 +188,6 @@ NodeRequest::NodeAsyncRequest::~NodeAsyncRequest() {
     }
 }
 
-Nan::Persistent<v8::Function> NodeRequest::handleCallback(Nan::New<v8::Function>(NodeRequest::HandleCallback));
+Nan::Persistent<v8::FunctionTemplate> NodeRequest::callbackTemplate(Nan::New<v8::FunctionTemplate>(NodeRequest::HandleCallback));
 
 }

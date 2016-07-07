@@ -45,7 +45,7 @@ private:
     Nan::Persistent<v8::Function> callback;
     mbgl::Response response;
 
-    static Nan::Persistent<v8::Function> handleCallback;
+    static Nan::Persistent<v8::FunctionTemplate> callbackTemplate;
 };
 
 }
