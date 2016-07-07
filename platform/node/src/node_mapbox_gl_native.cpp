@@ -19,7 +19,7 @@ void RegisterModule(v8::Local<v8::Object> target, v8::Local<v8::Object> module) 
     nodeRunLoop.stop();
 
     node_mbgl::NodeMap::Init(target);
-    node_mbgl::NodeRequestWorker::NodeRequest::Init(target);
+    node_mbgl::NodeRequest::Init(target);
 
     // Exports Resource constants.
     v8::Local<v8::Object> resource = Nan::New<v8::Object>();

@@ -7,13 +7,11 @@
 
 namespace node_mbgl {
 
-NodeRequestWorker::NodeRequestWorker(
-    v8::Local<v8::Object> nodeMapHandle_,
-    const mbgl::Resource& resource_,
+NodeRequest::NodeRequest(
+    NodeMap* target_,
     mbgl::FileSource::Callback fileSourceCallback_)
     : AsyncWorker(nullptr),
-    nodeMapHandle(nodeMapHandle_),
-    resource(resource_),
+    target(target_),
     fileSourceCallback(std::make_unique<mbgl::FileSource::Callback>(fileSourceCallback_)) {
     Nan::HandleScope scope;
 
@@ -25,28 +23,8 @@ NodeRequestWorker::NodeRequestWorker(
     callback.Reset(fn);
 }
 
-NodeRequestWorker::~NodeRequestWorker() {
-    std::cout << "~NodeRequestWorker" << std::endl;
-}
-
-void NodeRequestWorker::Execute() {
-    Nan::HandleScope scope;
-
-    auto req = Nan::NewInstance(Nan::New(NodeRequest::constructor)).ToLocalChecked();
-
-    Nan::Set(req, Nan::New("url").ToLocalChecked(), Nan::New<v8::String>(resource.url).ToLocalChecked());
-    Nan::Set(req, Nan::New("kind").ToLocalChecked(), Nan::New<v8::Integer>(resource.kind));
-
-    v8::Local<v8::Value> argv[] = {
-        req,
-        Nan::New(callback)
-    };
-
-    Nan::MakeCallback(nodeMapHandle, "request", 2, argv);
-}
-
-void NodeRequestWorker::Destroy() {
-    std::cout << "Destroy" << !fileSourceCallback << std::endl;
+NodeRequest::~NodeRequest() {
+    std::cout << "~NodeRequest" << std::endl;
 
     // When this object gets destroyed, make sure that the
     // AsyncRequest can no longer attempt to remove the callback function
@@ -56,20 +34,53 @@ void NodeRequestWorker::Destroy() {
     }
 }
 
-void NodeRequestWorker::WorkComplete() {
-    std::cout << "WorkComplete" << !fileSourceCallback << std::endl;
+Nan::Persistent<v8::Function> NodeRequest::constructor;
 
+NAN_MODULE_INIT(NodeRequest::Init) {
+    v8::Local<v8::FunctionTemplate> tpl = Nan::New<v8::FunctionTemplate>(New);
+
+    tpl->InstanceTemplate()->SetInternalFieldCount(1);
+    tpl->SetClassName(Nan::New("Request").ToLocalChecked());
+
+    constructor.Reset(tpl->GetFunction());
+    Nan::Set(target, Nan::New("Request").ToLocalChecked(), tpl->GetFunction());
+}
+
+void NodeRequest::New(const Nan::FunctionCallbackInfo<v8::Value>& info) {
+    Nan::HandleScope scope;
+
+    auto target = reinterpret_cast<NodeMap*>(info[0].As<v8::External>()->Value());
+    auto callback = reinterpret_cast<mbgl::FileSource::Callback*>(info[1].As<v8::External>()->Value());
+
+    auto req = new NodeRequest(target, *callback);
+    req->Wrap(info.This());
+
+    info.GetReturnValue().Set(info.This());
+}
+
+void NodeRequest::Execute() {
+    Nan::HandleScope scope;
+
+    v8::Local<v8::Value> argv[] = {
+        handle(),
+        Nan::New(callback)
+    };
+
+    Nan::MakeCallback(Nan::To<v8::Object>(target->handle()->GetInternalField(1)).ToLocalChecked(), "request", 2, argv);
+}
+
+void NodeRequest::WorkComplete() {
     // If callback has already been called, no-op
-    if (!fileSourceCallback) return Destroy();
+    if (!fileSourceCallback) return;
 
     ErrorMessage() ? HandleErrorCallback() : HandleOKCallback();
 }
 
-void NodeRequestWorker::HandleCallback(const Nan::FunctionCallbackInfo<v8::Value>& info) {
+void NodeRequest::HandleCallback(const Nan::FunctionCallbackInfo<v8::Value>& info) {
     auto hiddenValue = info.Callee()->GetHiddenValue(Nan::New("worker").ToLocalChecked());
     auto external = hiddenValue.As<v8::External>();
     auto externalValue = external->Value();
-    auto worker = reinterpret_cast<NodeRequestWorker*>(externalValue);
+    auto worker = reinterpret_cast<NodeRequest*>(externalValue);
 
     if (info[0]->IsObject()) {
         auto err = info[0]->ToObject();
@@ -127,7 +138,7 @@ void NodeRequestWorker::HandleCallback(const Nan::FunctionCallbackInfo<v8::Value
     worker->WorkComplete();
 }
 
-void NodeRequestWorker::HandleOKCallback() {
+void NodeRequest::HandleOKCallback() {
     // Move out of the object so callback() can only be fired once.
     auto cb = fileSourceCallback.release();
 
@@ -139,7 +150,7 @@ void NodeRequestWorker::HandleOKCallback() {
     cb = nullptr;
 }
 
-void NodeRequestWorker::HandleErrorCallback() {
+void NodeRequest::HandleErrorCallback() {
     // Move out of the object so callback() can only be fired once.
     auto cb = fileSourceCallback.release();
 
@@ -155,49 +166,28 @@ void NodeRequestWorker::HandleErrorCallback() {
     cb = nullptr;
 }
 
-NodeRequestWorker::NodeRequest::NodeRequest() {
-    std::cout << "NodeRequest" << std::endl;
-}
-
-NodeRequestWorker::NodeRequest::~NodeRequest() {
-    std::cout << "~NodeRequest" << std::endl;
-}
-
-Nan::Persistent<v8::Function> NodeRequestWorker::NodeRequest::constructor;
-
-NAN_MODULE_INIT(NodeRequestWorker::NodeRequest::Init) {
-    v8::Local<v8::FunctionTemplate> tpl = Nan::New<v8::FunctionTemplate>(New);
-
-    tpl->InstanceTemplate()->SetInternalFieldCount(1);
-    tpl->SetClassName(Nan::New("Request").ToLocalChecked());
-
-    constructor.Reset(tpl->GetFunction());
-    Nan::Set(target, Nan::New("Request").ToLocalChecked(), tpl->GetFunction());
-}
-
-void NodeRequestWorker::NodeRequest::New(const Nan::FunctionCallbackInfo<v8::Value>& info) {
-    auto req = new NodeRequest();
-    req->Wrap(info.This());
-    info.GetReturnValue().Set(info.This());
-}
-
-NodeRequestWorker::NodeAsyncRequest::NodeAsyncRequest(NodeRequestWorker* worker_) : worker(worker_) {
+NodeRequest::NodeAsyncRequest::NodeAsyncRequest(NodeRequest* worker_) : worker(worker_) {
     assert(worker);
 
     // Make sure the JS object has a pointer to this so that it can remove
     // its pointer in the destructor
     worker->asyncRequest = this;
+
+    worker->Execute();
 }
 
-NodeRequestWorker::NodeAsyncRequest::~NodeAsyncRequest() {
+NodeRequest::NodeAsyncRequest::~NodeAsyncRequest() {
+    std::cout << "~NodeAsyncRequest" << std::endl;
+
     if (worker) {
         // Remove the callback function because the AsyncRequest was
         // canceled and we are no longer interested in the result.
         worker->fileSourceCallback.reset();
         worker->asyncRequest = nullptr;
+        worker->callback.Reset();
     }
 }
 
-Nan::Persistent<v8::Function> NodeRequestWorker::handleCallback(Nan::New<v8::Function>(NodeRequestWorker::HandleCallback));
+Nan::Persistent<v8::Function> NodeRequest::handleCallback(Nan::New<v8::Function>(NodeRequest::HandleCallback));
 
 }

@@ -740,10 +740,19 @@ NodeMap::~NodeMap() {
 std::unique_ptr<mbgl::AsyncRequest> NodeMap::request(const mbgl::Resource& resource, Callback callback_) {
     Nan::HandleScope scope;
 
-    NodeRequestWorker worker(handle()->GetInternalField(1)->ToObject(), resource, callback_);
-    worker.Execute();
+    v8::Local<v8::Value> argv[] = {
+        Nan::New<v8::External>(this),
+        Nan::New<v8::External>(&callback_)
+    };
 
-    return std::make_unique<NodeRequestWorker::NodeAsyncRequest>(&worker);
+    auto request = Nan::NewInstance(Nan::New(NodeRequest::constructor), 2, argv).ToLocalChecked();
+
+    Nan::Set(request, Nan::New("url").ToLocalChecked(), Nan::New<v8::String>(resource.url).ToLocalChecked());
+    Nan::Set(request, Nan::New("kind").ToLocalChecked(), Nan::New<v8::Integer>(resource.kind));
+
+    auto worker = Nan::ObjectWrap::Unwrap<NodeRequest>(request);
+
+    return std::make_unique<NodeRequest::NodeAsyncRequest>(worker);
 }
 
 } // namespace node_mbgl
