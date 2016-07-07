@@ -9,9 +9,10 @@ namespace node_mbgl {
 
 NodeRequest::NodeRequest(
     NodeMap* target_,
-    mbgl::FileSource::Callback fileSourceCallback_)
-    :target(target_),
-    fileSourceCallback(std::make_unique<mbgl::FileSource::Callback>(fileSourceCallback_)) {}
+    mbgl::FileSource::Callback callback_)
+    : AsyncWorker(nullptr),
+    target(target_),
+    callback(callback_) {}
 
 NodeRequest::~NodeRequest() {
     std::cout << "~NodeRequest" << std::endl;
@@ -20,7 +21,7 @@ NodeRequest::~NodeRequest() {
     // AsyncRequest can no longer attempt to remove the callback function
     // this object was holding (it can't be fired anymore).
     if (asyncRequest) {
-        asyncRequest->worker = nullptr;
+        asyncRequest->request = nullptr;
     }
 }
 
@@ -69,10 +70,10 @@ void NodeRequest::HandleCallback(const Nan::FunctionCallbackInfo<v8::Value>& inf
     auto externalValue = external->Value();
     auto worker = reinterpret_cast<NodeRequest*>(externalValue);
 
-    std::cout << "HandleCallback " << !worker->fileSourceCallback << std::endl;
+    std::cout << "HandleCallback " << !worker->callback << std::endl;
 
     // Move out of the object so callback() can only be fired once.
-    auto cb = worker->fileSourceCallback.release();
+    auto cb = std::move(worker->callback);
     if (!cb) {
         info.GetReturnValue().SetUndefined();
         return;
@@ -141,26 +142,25 @@ void NodeRequest::HandleCallback(const Nan::FunctionCallbackInfo<v8::Value>& inf
     }
 
     // Send the response object to the NodeFileSource object
-    (*cb)(worker->response);
+    (cb)(worker->response);
     info.GetReturnValue().SetUndefined();
 }
 
-NodeRequest::NodeAsyncRequest::NodeAsyncRequest(NodeRequest* worker_) : worker(worker_) {
-    assert(worker);
+NodeRequest::NodeAsyncRequest::NodeAsyncRequest(NodeRequest* request_) : request(request_) {
+    assert(request);
 
     // Make sure the JS object has a pointer to this so that it can remove
     // its pointer in the destructor
-    worker->asyncRequest = this;
-
-    // worker->Execute();
+    request->asyncRequest = this;
 }
 
 NodeRequest::NodeAsyncRequest::~NodeAsyncRequest() {
-    if (worker) {
+    if (request) {
         // Remove the callback function because the AsyncRequest was
         // canceled and we are no longer interested in the result.
-        worker->fileSourceCallback.reset();
-        worker->asyncRequest = nullptr;
+        // request->fileSourceCallback.reset();
+        request->callback = {};
+        request->asyncRequest = nullptr;
     }
 }
 
