@@ -86,6 +86,8 @@ void NodeRequest::HandleCallback(const Nan::FunctionCallbackInfo<v8::Value>& inf
         return;
     }
 
+    mbgl::Response response;
+
     if (info[0]->IsObject()) {
         auto err = info[0]->ToObject();
         auto msg = Nan::New("message").ToLocalChecked();
@@ -97,7 +99,7 @@ void NodeRequest::HandleCallback(const Nan::FunctionCallbackInfo<v8::Value>& inf
     } else if (info[0]->IsString()) {
         request->SetErrorMessage(*Nan::Utf8String(info[0]));
     } else if (info.Length() < 1) {
-        request->response.noContent = true;
+        response.noContent = true;
     } else if (info.Length() < 2 || !info[1]->IsObject()) {
         return Nan::ThrowTypeError("Second argument must be a response object");
     } else {
@@ -106,7 +108,7 @@ void NodeRequest::HandleCallback(const Nan::FunctionCallbackInfo<v8::Value>& inf
         if (Nan::Has(res, Nan::New("modified").ToLocalChecked()).IsJust()) {
             const double modified = Nan::To<double>(Nan::Get(res, Nan::New("modified").ToLocalChecked()).ToLocalChecked()).FromJust();
             if (!std::isnan(modified)) {
-                request->response.modified = mbgl::Timestamp { mbgl::Seconds(
+                response.modified = mbgl::Timestamp { mbgl::Seconds(
                     static_cast<mbgl::Seconds::rep>(modified / 1000)) };
             }
         }
@@ -114,7 +116,7 @@ void NodeRequest::HandleCallback(const Nan::FunctionCallbackInfo<v8::Value>& inf
         if (Nan::Has(res, Nan::New("expires").ToLocalChecked()).IsJust()) {
             const double expires = Nan::To<double>(Nan::Get(res, Nan::New("expires").ToLocalChecked()).ToLocalChecked()).FromJust();
             if (!std::isnan(expires)) {
-                request->response.expires = mbgl::Timestamp { mbgl::Seconds(
+                response.expires = mbgl::Timestamp { mbgl::Seconds(
                     static_cast<mbgl::Seconds::rep>(expires / 1000)) };
             }
         }
@@ -122,14 +124,14 @@ void NodeRequest::HandleCallback(const Nan::FunctionCallbackInfo<v8::Value>& inf
         if (Nan::Has(res, Nan::New("etag").ToLocalChecked()).IsJust()) {
             Nan::Utf8String etag(Nan::Get(res, Nan::New("etag").ToLocalChecked()).ToLocalChecked());
             if (*etag) {
-                request->response.etag = std::string { *etag };
+                response.etag = std::string { *etag };
             }
         }
 
         if (Nan::Has(res, Nan::New("data").ToLocalChecked()).IsJust()) {
             auto data = Nan::Get(res, Nan::New("data").ToLocalChecked()).ToLocalChecked();
             if (node::Buffer::HasInstance(data)) {
-                request->response.data = std::make_shared<const std::string>(
+                response.data = std::make_shared<const std::string>(
                     node::Buffer::Data(data),
                     node::Buffer::Length(data)
                 );
@@ -141,7 +143,7 @@ void NodeRequest::HandleCallback(const Nan::FunctionCallbackInfo<v8::Value>& inf
 
     if (request->ErrorMessage()) {
         std::cout << "Callback with error" << std::endl;
-        request->response.error = std::make_unique<mbgl::Response::Error>(
+        response.error = std::make_unique<mbgl::Response::Error>(
             mbgl::Response::Error::Reason::Other,
             std::string{ request->ErrorMessage() });
     } else {
@@ -149,7 +151,7 @@ void NodeRequest::HandleCallback(const Nan::FunctionCallbackInfo<v8::Value>& inf
     }
 
     // Send the response object to the NodeFileSource object
-    callback(request->response);
+    callback(response);
     info.GetReturnValue().SetUndefined();
 }
 

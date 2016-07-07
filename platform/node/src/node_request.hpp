@@ -40,8 +40,6 @@ private:
     mbgl::FileSource::Callback callback;
     NodeAsyncRequest* asyncRequest = nullptr;
 
-    mbgl::Response response;
-
     static Nan::Persistent<v8::FunctionTemplate> callbackTemplate;
 };
 
