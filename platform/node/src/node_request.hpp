@@ -12,7 +12,7 @@
 
 namespace node_mbgl {
 
-class NodeRequest : public Nan::AsyncWorker, public Nan::ObjectWrap {
+class NodeRequest : public Nan::ObjectWrap {
 public:
     static NAN_MODULE_INIT(Init);
     static Nan::Persistent<v8::Function> constructor;
@@ -26,6 +26,8 @@ public:
 
     static void HandleCallback(const Nan::FunctionCallbackInfo<v8::Value>& info);
 
+    static Nan::Persistent<v8::FunctionTemplate> callbackTemplate;
+
     struct NodeAsyncRequest : public mbgl::AsyncRequest {
         NodeAsyncRequest(NodeRequest*);
         ~NodeAsyncRequest() override;
@@ -34,18 +36,26 @@ public:
     };
 
 protected:
-    virtual void HandleOKCallback();
-    virtual void HandleErrorCallback();
+    const char* ErrorMessage() {
+        return error;
+    }
+
+    void SetErrorMessage(const char* msg) {
+        delete[] error;
+
+        size_t size = strlen(msg) + 1;
+        error = new char[size];
+        memcpy(error, msg, size);
+    }
 
 private:
     NodeMap* target;
     std::unique_ptr<mbgl::FileSource::Callback> fileSourceCallback;
     NodeAsyncRequest* asyncRequest = nullptr;
 
-    Nan::Persistent<v8::Function> callback;
     mbgl::Response response;
 
-    static Nan::Persistent<v8::FunctionTemplate> callbackTemplate;
+    char* error = NULL;
 };
 
 }

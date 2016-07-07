@@ -751,6 +751,17 @@ std::unique_ptr<mbgl::AsyncRequest> NodeMap::request(const mbgl::Resource& resou
     Nan::Set(request, Nan::New("kind").ToLocalChecked(), Nan::New<v8::Integer>(resource.kind));
 
     auto worker = Nan::ObjectWrap::Unwrap<NodeRequest>(request);
+    auto fn = Nan::New(worker->callbackTemplate)->GetFunction();
+
+    // Bind a reference to this object on the callback function
+    fn->SetHiddenValue(Nan::New("worker").ToLocalChecked(), Nan::New<v8::External>(worker));
+
+    v8::Local<v8::Value> callbackArgv[] = {
+        request,
+        fn
+    };
+
+    Nan::MakeCallback(Nan::To<v8::Object>(handle()->GetInternalField(1)).ToLocalChecked(), "request", 2, callbackArgv);
 
     return std::make_unique<NodeRequest::NodeAsyncRequest>(worker);
 }

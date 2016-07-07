@@ -10,18 +10,8 @@ namespace node_mbgl {
 NodeRequest::NodeRequest(
     NodeMap* target_,
     mbgl::FileSource::Callback fileSourceCallback_)
-    : AsyncWorker(nullptr),
-    target(target_),
-    fileSourceCallback(std::make_unique<mbgl::FileSource::Callback>(fileSourceCallback_)) {
-    Nan::HandleScope scope;
-
-    auto fn = Nan::New(callbackTemplate)->GetFunction();
-
-    // Bind a reference to this object on the callback function
-    fn->SetHiddenValue(Nan::New("worker").ToLocalChecked(), Nan::New<v8::External>(this));
-
-    callback.Reset(fn);
-}
+    :target(target_),
+    fileSourceCallback(std::make_unique<mbgl::FileSource::Callback>(fileSourceCallback_)) {}
 
 NodeRequest::~NodeRequest() {
     std::cout << "~NodeRequest" << std::endl;
@@ -63,17 +53,14 @@ void NodeRequest::Execute() {
 
     v8::Local<v8::Value> argv[] = {
         handle(),
-        Nan::New(callback)
+        Nan::New(callbackTemplate)->GetFunction()
     };
 
     Nan::MakeCallback(Nan::To<v8::Object>(target->handle()->GetInternalField(1)).ToLocalChecked(), "request", 2, argv);
 }
 
 void NodeRequest::WorkComplete() {
-    // If callback has already been called, no-op
-    if (!fileSourceCallback) return;
-
-    ErrorMessage() ? HandleErrorCallback() : HandleOKCallback();
+    // no-op
 }
 
 void NodeRequest::HandleCallback(const Nan::FunctionCallbackInfo<v8::Value>& info) {
@@ -81,6 +68,15 @@ void NodeRequest::HandleCallback(const Nan::FunctionCallbackInfo<v8::Value>& inf
     auto external = hiddenValue.As<v8::External>();
     auto externalValue = external->Value();
     auto worker = reinterpret_cast<NodeRequest*>(externalValue);
+
+    std::cout << "HandleCallback " << !worker->fileSourceCallback << std::endl;
+
+    // Move out of the object so callback() can only be fired once.
+    auto cb = worker->fileSourceCallback.release();
+    if (!cb) {
+        info.GetReturnValue().SetUndefined();
+        return;
+    }
 
     if (info[0]->IsObject()) {
         auto err = info[0]->ToObject();
@@ -135,35 +131,18 @@ void NodeRequest::HandleCallback(const Nan::FunctionCallbackInfo<v8::Value>& inf
         }
     }
 
-    worker->WorkComplete();
-}
-
-void NodeRequest::HandleOKCallback() {
-    // Move out of the object so callback() can only be fired once.
-    auto cb = fileSourceCallback.release();
+    if (worker->ErrorMessage()) {
+        std::cout << "Callback with error" << std::endl;
+        worker->response.error = std::make_unique<mbgl::Response::Error>(
+            mbgl::Response::Error::Reason::Other,
+            std::string{ worker->ErrorMessage() });
+    } else {
+        std::cout << "Callback with response" << std::endl;
+    }
 
     // Send the response object to the NodeFileSource object
-    (*cb)(response);
-
-    // Clean up callback
-    delete cb;
-    cb = nullptr;
-}
-
-void NodeRequest::HandleErrorCallback() {
-    // Move out of the object so callback() can only be fired once.
-    auto cb = fileSourceCallback.release();
-
-    response.error = std::make_unique<mbgl::Response::Error>(
-        mbgl::Response::Error::Reason::Other,
-        std::string{ ErrorMessage() });
-  
-    // Send the response object to the NodeFileSource object
-    (*cb)(response);
-
-    // Clean up callback
-    delete cb;
-    cb = nullptr;
+    (*cb)(worker->response);
+    info.GetReturnValue().SetUndefined();
 }
 
 NodeRequest::NodeAsyncRequest::NodeAsyncRequest(NodeRequest* worker_) : worker(worker_) {
@@ -173,18 +152,15 @@ NodeRequest::NodeAsyncRequest::NodeAsyncRequest(NodeRequest* worker_) : worker(w
     // its pointer in the destructor
     worker->asyncRequest = this;
 
-    worker->Execute();
+    // worker->Execute();
 }
 
 NodeRequest::NodeAsyncRequest::~NodeAsyncRequest() {
-    std::cout << "~NodeAsyncRequest" << std::endl;
-
     if (worker) {
         // Remove the callback function because the AsyncRequest was
         // canceled and we are no longer interested in the result.
         worker->fileSourceCallback.reset();
         worker->asyncRequest = nullptr;
-        worker->callback.Reset();
     }
 }
 
