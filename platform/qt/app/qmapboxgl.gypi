@@ -17,6 +17,7 @@
         'main.cpp',
         'mapwindow.cpp',
         'mapwindow.hpp',
+        'source.qrc',
       ],
 
       'include_dirs': [
