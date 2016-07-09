@@ -5,6 +5,17 @@
 
 namespace mbgl {
 
+static std::string getQuadKey(int32_t x, int32_t y, int8_t z) {
+    std::string quadKey;
+    quadKey.reserve(z);
+    int32_t mask;
+    for (int8_t i = z; i > 0; i--) {
+        mask = 1 << (i - 1);
+        quadKey += '0' + ((x & mask ? 1 : 0) + (y & mask ? 2 : 0));
+    }
+    return quadKey;
+}
+
 Resource Resource::style(const std::string& url) {
     return Resource {
         Resource::Kind::Style,
@@ -55,6 +66,7 @@ Resource Resource::tile(const std::string& urlTemplate,
                         int8_t z,
                         Necessity necessity) {
     bool supportsRatio = urlTemplate.find("{ratio}") != std::string::npos;
+    auto quadKey = getQuadKey(x, y, z);
     return Resource {
         Resource::Kind::Tile,
         util::replaceTokens(urlTemplate, [&](const std::string& token) {
@@ -64,6 +76,8 @@ Resource Resource::tile(const std::string& urlTemplate,
                 return util::toString(x);
             } else if (token == "y") {
                 return util::toString(y);
+            } else if (token == "quadkey") {
+                return quadKey;
             } else if (token == "prefix") {
                 std::string prefix{ 2 };
                 prefix[0] = "0123456789abcdef"[x % 16];
