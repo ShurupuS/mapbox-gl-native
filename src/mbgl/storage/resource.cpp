@@ -1,7 +1,11 @@
+#include <mapbox/geometry/box.hpp>
 #include <mbgl/storage/resource.hpp>
+#include <mbgl/util/constants.hpp>
 #include <mbgl/util/string.hpp>
 #include <mbgl/util/token.hpp>
 #include <mbgl/util/url.hpp>
+
+#include <cmath>
 
 namespace mbgl {
 
@@ -14,6 +18,25 @@ static std::string getQuadKey(int32_t x, int32_t y, int8_t z) {
         quadKey += '0' + ((x & mask ? 1 : 0) + (y & mask ? 2 : 0));
     }
     return quadKey;
+}
+
+static mapbox::geometry::point<double> getMercCoord(int32_t x, int32_t y, int8_t z) {
+    double resolution = (util::M2PI * util::EARTH_RADIUS_M / 256) / std::pow(2.0f, z);
+    return {
+        x * resolution - util::M2PI * util::EARTH_RADIUS_M / 2,
+        y * resolution - util::M2PI * util::EARTH_RADIUS_M / 2,
+    };
+}
+
+static std::string getTileBBox(int32_t x, int32_t y, int8_t z) {
+    // Alter the y for the Google/OSM tile scheme.
+    y = std::pow(2.0f, z) - y - 1;
+
+    auto min = getMercCoord(x * 256, y * 256, z);
+    auto max = getMercCoord((x + 1) * 256, (y + 1) * 256, z);
+
+    return (util::toString(min.x) + "," + util::toString(min.y) + "," +
+            util::toString(max.x) + "," + util::toString(max.y));
 }
 
 Resource Resource::style(const std::string& url) {
@@ -67,6 +90,7 @@ Resource Resource::tile(const std::string& urlTemplate,
                         Necessity necessity) {
     bool supportsRatio = urlTemplate.find("{ratio}") != std::string::npos;
     auto quadKey = getQuadKey(x, y, z);
+    auto bbox = getTileBBox(x, y, z);
     return Resource {
         Resource::Kind::Tile,
         util::replaceTokens(urlTemplate, [&](const std::string& token) {
@@ -78,6 +102,8 @@ Resource Resource::tile(const std::string& urlTemplate,
                 return util::toString(y);
             } else if (token == "quadkey") {
                 return quadKey;
+            } else if (token == "bbox-epsg-3857") {
+                return bbox;
             } else if (token == "prefix") {
                 std::string prefix{ 2 };
                 prefix[0] = "0123456789abcdef"[x % 16];
